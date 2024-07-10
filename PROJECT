@@ -7,4 +7,13 @@ layout:
 - go.kubebuilder.io/v4
 projectName: istio-multitenancy
 repo: github.com/eoinfennessy/istio-multitenancy
+resources:
+- api:
+    crdVersion: v1
+  controller: true
+  domain: istio.eoinfennessy.com
+  group: multitenancy
+  kind: Zone
+  path: github.com/eoinfennessy/istio-multitenancy/api/v1alpha1
+  version: v1alpha1
 version: "3"
