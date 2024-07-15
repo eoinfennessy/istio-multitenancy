@@ -73,6 +73,10 @@ const (
 	// of the Zone has failed and will be retried.
 	ConditionReasonReconcileError ZoneConditionReason = "ReconcileError"
 
+	// ConditionReasonUnreconcilable indicates that the Zone cannot currently be reconciled, and
+	// reconciliation will not be retried.
+	ConditionReasonUnreconcilable ZoneConditionReason = "Unreconcilable"
+
 	// ConditionReasonReconcileSuccess indicates that the reconciliation
 	// of the Zone has succeeded.
 	ConditionReasonReconcileSuccess ZoneConditionReason = "ReconcileSuccess"

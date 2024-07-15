@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/labels"
+	"slices"
 	"strings"
 
 	"istio.io/api/annotation"
@@ -154,12 +156,49 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 		err = <-ch
 		if err != nil {
 			if zoneConflictErr, ok := err.(*pkgerrors.ZoneConflictError); ok {
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, zoneConflictErr.Error())
+				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, zoneConflictErr.Error())
+				// The Zone is currently unreconcilable; do not requeue
 				return ctrl.Result{}, nil
 			} else {
 				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to update Service")
 				return ctrl.Result{}, err
 			}
+		}
+	}
+
+	// Clean up Services that should no longer be part of the Zone
+	// TODO: limit the list options to only include Services in namespaces outside the Zone (I tried below, but it always returns an empty list)
+	//fieldSelectors := make([]fields.Selector, len(z.Spec.Namespaces))
+	//for i, ns := range z.Spec.Namespaces {
+	//	fieldSelectors[i] = fields.OneTermNotEqualSelector(".metadata.namespace", ns)
+	//	log.V(1).Info("fieldSelector", "requirements", fieldSelectors[i].Requirements())
+	//}
+
+	services := corev1.ServiceList{}
+	if err = r.List(ctx, &services, &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{constants.ZoneLabel: req.Name}),
+		//FieldSelector: fields.AndSelectors(fieldSelectors...),
+	}); err != nil {
+		z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to list Services")
+		return ctrl.Result{}, err
+	}
+
+	var updatedServiceCount int
+	for _, service := range services.Items {
+		if !slices.Contains(z.Spec.Namespaces, service.GetNamespace()) {
+			updatedServiceCount++
+			go func(ch chan error) {
+				delete(service.Labels, constants.ZoneLabel)
+				delete(service.Annotations, annotation.NetworkingExportTo.Name)
+				ch <- r.Update(ctx, &service)
+			}(ch)
+		}
+	}
+	for range updatedServiceCount {
+		err = <-ch
+		if err != nil {
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to update Service")
+			return ctrl.Result{}, err
 		}
 	}
 
