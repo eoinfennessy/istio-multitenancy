@@ -19,19 +19,14 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
-	"slices"
-	"strings"
+	"reflect"
 
-	"istio.io/api/annotation"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,7 +38,6 @@ import (
 
 	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
 	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
-	pkgerrors "github.com/eoinfennessy/istio-multitenancy/pkg/errors"
 )
 
 const (
@@ -65,7 +59,7 @@ type ZoneReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := logf.FromContext(ctx)
-	log.Info("Reconcile started")
+	log.V(1).Info("Reconcile started")
 
 	// Fetch Zone resource
 	z := &v1alpha1.Zone{}
@@ -101,106 +95,19 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 		return ctrl.Result{}, r.finalize(ctx, z)
 	}
 
-	// Get lists of Services that should be part of the Zone
-	servicesLists := make([]*corev1.ServiceList, len(z.Spec.Namespaces))
-	ch := make(chan error)
-	for i, ns := range z.Spec.Namespaces {
-		servicesLists[i] = &corev1.ServiceList{}
-		go func(ch chan error) {
-			ch <- r.List(ctx, servicesLists[i], &client.ListOptions{Namespace: ns})
-		}(ch)
-	}
-	for range z.Spec.Namespaces {
-		err = <-ch
-		if err != nil {
-			log.Error(err, "Failed to list Services")
-			return ctrl.Result{}, err
+	if result, err := r.reconcileServices(ctx, z); result != nil || err != nil {
+		if result != nil {
+			return *result, err
 		}
-	}
-
-	// Set labels and annotations on Services
-	var serviceCount int
-	exportToAnnotationValue := strings.Join(z.Spec.Namespaces, ",")
-	for _, servicesList := range servicesLists {
-		serviceCount += len(servicesList.Items)
-		for _, service := range servicesList.Items {
-			go func(ch chan error) {
-				var metaChanged bool
-				if labelVal, exists := service.GetLabels()[constants.ZoneLabel]; exists {
-					// Return ZoneConflictError if Service is currently part of another Zone
-					if labelVal != req.Name {
-						err := &pkgerrors.ZoneConflictError{
-							Err: errors.New(fmt.Sprintf("Service %s in namespace %s is currently part of zone %s", service.Name, service.Namespace, labelVal)),
-						}
-						ch <- err
-						return
-					}
-				} else {
-					service.SetLabels(map[string]string{constants.ZoneLabel: req.Name})
-					metaChanged = true
-				}
-
-				if service.GetAnnotations()[annotation.NetworkingExportTo.Name] != exportToAnnotationValue {
-					service.SetAnnotations(map[string]string{annotation.NetworkingExportTo.Name: exportToAnnotationValue})
-					metaChanged = true
-				}
-				if metaChanged {
-					log.Info("Updating service", "namespace", service.Namespace, "name", service.Name)
-					ch <- r.Update(ctx, &service)
-				}
-				ch <- nil
-			}(ch)
-		}
-	}
-	for range serviceCount {
-		err = <-ch
-		if err != nil {
-			if zoneConflictErr, ok := err.(*pkgerrors.ZoneConflictError); ok {
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, zoneConflictErr.Error())
-				// The Zone is currently unreconcilable; do not requeue
-				return ctrl.Result{}, nil
-			} else {
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to update Service")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	// Clean up Services that should no longer be part of the Zone
-	// TODO: limit the list options to only include Services in namespaces outside the Zone (I tried below, but it always returns an empty list)
-	//fieldSelectors := make([]fields.Selector, len(z.Spec.Namespaces))
-	//for i, ns := range z.Spec.Namespaces {
-	//	fieldSelectors[i] = fields.OneTermNotEqualSelector(".metadata.namespace", ns)
-	//	log.V(1).Info("fieldSelector", "requirements", fieldSelectors[i].Requirements())
-	//}
-
-	services := corev1.ServiceList{}
-	if err = r.List(ctx, &services, &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(map[string]string{constants.ZoneLabel: req.Name}),
-		//FieldSelector: fields.AndSelectors(fieldSelectors...),
-	}); err != nil {
-		z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to list Services")
 		return ctrl.Result{}, err
 	}
 
-	var updatedServiceCount int
-	for _, service := range services.Items {
-		if !slices.Contains(z.Spec.Namespaces, service.GetNamespace()) {
-			updatedServiceCount++
-			go func(ch chan error) {
-				delete(service.Labels, constants.ZoneLabel)
-				delete(service.Annotations, annotation.NetworkingExportTo.Name)
-				ch <- r.Update(ctx, &service)
-			}(ch)
-		}
-	}
-	for range updatedServiceCount {
-		err = <-ch
-		if err != nil {
-			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to update Service")
-			return ctrl.Result{}, err
-		}
-	}
+	z.Status.SetStatusCondition(
+		v1alpha1.ConditionTypeReconciled,
+		metav1.ConditionTrue,
+		v1alpha1.ConditionReasonReconcileSuccess,
+		"Finished reconciling Zone",
+	)
 
 	return ctrl.Result{}, nil
 }
@@ -232,7 +139,10 @@ func (r *ZoneReconciler) finalize(ctx context.Context, z *v1alpha1.Zone) error {
 	log := logf.FromContext(ctx)
 	log.Info("Finalizing Zone resource")
 
-	// TODO: Add finalize logic
+	if err := r.cleanUpServices(ctx, z, func(_ corev1.Service) bool { return true }); err != nil {
+		log.Error(err, "Failed to clean up Services")
+		return err
+	}
 
 	controllerutil.RemoveFinalizer(z, constants.ZoneFinalizer)
 	if err := r.Update(ctx, z); err != nil {
