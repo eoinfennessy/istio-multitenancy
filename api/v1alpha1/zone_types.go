@@ -35,6 +35,11 @@ type ZoneStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
+// FindStatusCondition finds the conditionType in the ZoneStatus conditions.
+func (s *ZoneStatus) FindStatusCondition(conditionType ZoneConditionType) *metav1.Condition {
+	return meta.FindStatusCondition(s.Conditions, string(conditionType))
+}
+
 // SetStatusCondition sets the corresponding condition in conditions to newCondition and returns true
 // if the conditions are changed by this call.
 // conditions must be non-nil.
