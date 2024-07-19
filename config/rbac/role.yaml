@@ -5,6 +5,15 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - multitenancy.istio.eoinfennessy.com
   resources:
   - zones

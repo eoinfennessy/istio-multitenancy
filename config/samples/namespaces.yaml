@@ -1,0 +1,9 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: blue-a
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: blue-b
