@@ -7,10 +7,6 @@ on:
       - "release-*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-# TODO: delete me
-  pull_request:
-    branches:
-      - main
 
 env:
   MAIN_BRANCH_NAME: main
@@ -33,7 +29,7 @@ jobs:
 
       - name: Add image tags
         id: add-tags
-        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }}" >> $GITHUB_ENV
+        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }},${{ steps.vars.outputs.base_image }}:${{ github.ref_name }}" >> $GITHUB_ENV
 
       - name: Add latest tag
         if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
