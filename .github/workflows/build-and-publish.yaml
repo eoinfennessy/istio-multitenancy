@@ -1,0 +1,57 @@
+name: Build and Publish Controller Image
+
+on:
+  push:
+    branches:
+      - main
+      - "release-*"
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+env:
+  MAIN_BRANCH_NAME: main
+
+jobs:
+  build:
+    name: Build and Publish Controller Image
+    runs-on: ubuntu-latest
+    outputs:
+      sha_short: ${{ steps.vars.outputs.sha_short }}
+      controller_image: ${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Calculate vars
+        id: vars
+        run: |
+          echo "sha_short=$(echo ${{ github.sha }} | cut -b -7)" >> $GITHUB_OUTPUT
+          echo "base_image=${{ vars.IMG_REGISTRY_HOST }}/${{ vars.IMG_REGISTRY_ORG }}/${{ vars.IMG_REGISTRY_REPO }}" >> $GITHUB_OUTPUT
+
+      - name: Add image tags
+        id: add-tags
+        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }},${{ steps.vars.outputs.base_image }}:${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Add latest tag
+        if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
+        id: add-latest-tag
+        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:latest,${{ env.IMG_TAGS }}" >> $GITHUB_ENV
+
+      - name: Login to image registry
+        uses: docker/login-action@v3
+        id: registry-login
+        with:
+          registry: ${{ vars.IMG_REGISTRY_HOST }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+      - name: Build and push Controller Image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ${{ env.IMG_TAGS }}
+
+      - name: Print Image URL
+        run: |
+          echo "Image pushed to ${{ env.IMG_TAGS }}"
+          echo "Image digest: ${{ steps.build-and-push.outputs.digest }}"
