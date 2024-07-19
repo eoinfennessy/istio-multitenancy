@@ -33,7 +33,7 @@ jobs:
 
       - name: Add image tags
         id: add-tags
-        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }},${{ steps.vars.outputs.base_image }}:${{ github.ref_name }}" >> $GITHUB_ENV
+        run: echo "IMG_TAGS=${{ steps.vars.outputs.base_image }}:${{ steps.vars.outputs.sha_short }}" >> $GITHUB_ENV
 
       - name: Add latest tag
         if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
