@@ -39,3 +39,9 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - sidecars
+  verbs:
+  - '*'

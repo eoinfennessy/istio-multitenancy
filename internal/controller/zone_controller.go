@@ -21,6 +21,7 @@ import (
 	"errors"
 	"reflect"
 
+	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +39,7 @@ import (
 
 	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
 	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
+	pkgerrors "github.com/eoinfennessy/istio-multitenancy/pkg/errors"
 )
 
 const (
@@ -54,6 +56,7 @@ type ZoneReconciler struct {
 // +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups="networking.istio.io",resources=sidecars,verbs="*"
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -100,6 +103,10 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 			return *result, err
 		}
 		return ctrl.Result{}, err
+	}
+
+	if err = r.reconcileSidecars(ctx, z); err != nil {
+		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
 	}
 
 	z.Status.SetStatusCondition(
@@ -186,6 +193,7 @@ func (r *ZoneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Zone{}).
+		Owns(&istioclientnetworkingv1.Sidecar{}).
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceToReconcileRequests),
