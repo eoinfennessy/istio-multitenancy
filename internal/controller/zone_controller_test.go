@@ -25,8 +25,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"istio.io/api/annotation"
+	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -164,17 +166,19 @@ var _ = Describe("Zone Controller", Ordered, func() {
 				}).Should(Succeed())
 			})
 
-			When("removing a namespace from a Zone's from spec", func() {
+			When("removing a namespace from a Zone's spec", func() {
 				var removedNamespace = blueZoneNamespaces[0]
 
 				BeforeAll(func() {
 					By("updating the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
 					zone.Spec.Namespaces = blueZoneNamespaces[1:]
 					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
 				})
 
 				AfterAll(func() {
 					By("re-adding the removed namespace to the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
 					zone.Spec.Namespaces = blueZoneNamespaces
 					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
 				})
@@ -214,6 +218,88 @@ var _ = Describe("Zone Controller", Ordered, func() {
 							_, labelExists := s.GetLabels()[constants.ZoneLabel]
 							g.Expect(labelExists).To(BeFalse())
 						}
+					}).Should(Succeed())
+				})
+			})
+		})
+
+		When("reconciling Sidecars in the mesh", func() {
+			It("should create Sidecar resources in each Zone namespace", func() {
+				Eventually(func(g Gomega) {
+					for _, ns := range zone.Spec.Namespaces {
+						sidecar := &istioclientnetworkingv1.Sidecar{}
+						sidecarKey := types.NamespacedName{
+							Namespace: ns,
+							Name:      constants.SingeltonResourceName,
+						}
+						g.Expect(k8sClient.Get(ctx, sidecarKey, sidecar)).To(Succeed())
+					}
+				}).Should(Succeed())
+			})
+
+			It("should add the appropriate egress hosts to each Sidecar in the Zone", func() {
+				Eventually(func(g Gomega) {
+					for _, ns := range zone.Spec.Namespaces {
+						sidecar := &istioclientnetworkingv1.Sidecar{}
+						sidecarKey := types.NamespacedName{
+							Namespace: ns,
+							Name:      constants.SingeltonResourceName,
+						}
+						g.Expect(k8sClient.Get(ctx, sidecarKey, sidecar)).To(Succeed())
+
+						g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
+						g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
+						expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+						g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
+					}
+				}).Should(Succeed())
+			})
+
+			When("removing a namespace from a Zone's spec", func() {
+				var removedNamespace = blueZoneNamespaces[0]
+
+				BeforeAll(func() {
+					By("updating the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+					zone.Spec.Namespaces = blueZoneNamespaces[1:]
+					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+				})
+
+				AfterAll(func() {
+					By("re-adding the removed namespace to the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+					zone.Spec.Namespaces = blueZoneNamespaces
+					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+				})
+
+				It("should update the egress hosts of the remaining Sidecars to exclude the removed namespace", func() {
+					Eventually(func(g Gomega) {
+						for _, ns := range zone.Spec.Namespaces {
+							sidecar := &istioclientnetworkingv1.Sidecar{}
+							sidecarKey := types.NamespacedName{
+								Namespace: ns,
+								Name:      constants.SingeltonResourceName,
+							}
+							g.Expect(k8sClient.Get(ctx, sidecarKey, sidecar)).To(Succeed())
+
+							g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
+							g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
+							expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+							g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
+						}
+					}).Should(Succeed())
+				})
+
+				It("should delete the Sidecar in the namespace that was removed from the Zone", func() {
+					Eventually(func(g Gomega) {
+						sidecar := &istioclientnetworkingv1.Sidecar{}
+						sidecarKey := types.NamespacedName{
+							Namespace: removedNamespace,
+							Name:      constants.SingeltonResourceName,
+						}
+						err := k8sClient.Get(ctx, sidecarKey, sidecar)
+						g.Expect(err).To(Not(BeNil()))
+						g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 					}).Should(Succeed())
 				})
 			})

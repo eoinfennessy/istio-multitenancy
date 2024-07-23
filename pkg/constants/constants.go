@@ -20,6 +20,9 @@ const (
 	// MetadataNamespace is the namespace for multitenancy metadata (labels, annotations)
 	MetadataNamespace = "multitenancy.istio.eoinfennessy.com"
 
+	// SingeltonResourceName is the name given to resources where only one resource should exist on the cluster or in a namespace
+	SingeltonResourceName = "default"
+
 	// ZoneFinalizer is the finalizer name the controller adds to Zones that need to be finalized during deletion
 	ZoneFinalizer = MetadataNamespace + "/zone-finalizer"
 

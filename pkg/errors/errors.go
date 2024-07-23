@@ -16,10 +16,28 @@ limitations under the License.
 
 package errors
 
-type ZoneConflictError struct {
+import "errors"
+
+type UnreconcilableError struct {
 	Err error
 }
 
-func (r *ZoneConflictError) Error() string {
+func (r *UnreconcilableError) Error() string {
 	return r.Err.Error()
+}
+
+func NewUnreconcilableError(text string) *UnreconcilableError {
+	return &UnreconcilableError{Err: errors.New(text)}
+}
+
+func IsUnreconcilableError(err error) bool {
+	_, ok := err.(*UnreconcilableError)
+	return ok
+}
+
+func IgnoreUnreconcilableError(err error) error {
+	if IsUnreconcilableError(err) {
+		return nil
+	}
+	return err
 }

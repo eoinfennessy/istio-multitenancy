@@ -1,8 +1,23 @@
+/*
+Copyright 2024.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -37,7 +52,7 @@ func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone
 	for range svcs {
 		err = <-ch
 		if err != nil {
-			if zoneConflictErr, ok := err.(*pkgerrors.ZoneConflictError); ok {
+			if zoneConflictErr, ok := err.(*pkgerrors.UnreconcilableError); ok {
 				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, zoneConflictErr.Error())
 				// We should not requeue because the Zone is currently unreconcilable
 				return &ctrl.Result{}, nil
@@ -126,12 +141,9 @@ func (r *ZoneReconciler) includeServiceInZone(ctx context.Context, z *v1alpha1.Z
 
 	var metaChanged bool
 	if labelVal, exists := svc.GetLabels()[constants.ZoneLabel]; exists {
-		// Return ZoneConflictError if Service is currently part of another Zone
+		// Service is currently part of another Zone; Return UnreconcilableError
 		if labelVal != z.Name {
-			err := &pkgerrors.ZoneConflictError{
-				Err: errors.New(fmt.Sprintf("Service %s in namespace %s is currently part of zone %s", svc.Name, svc.Namespace, labelVal)),
-			}
-			return err
+			return pkgerrors.NewUnreconcilableError(fmt.Sprintf("Service %s in namespace %s is currently part of zone %s", svc.Name, svc.Namespace, labelVal))
 		}
 	} else {
 		svc.SetLabels(map[string]string{constants.ZoneLabel: z.Name})
