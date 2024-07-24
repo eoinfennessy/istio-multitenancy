@@ -25,7 +25,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	istionetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
+	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
+	istioclientsecurityv1 "istio.io/client-go/pkg/apis/security/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -51,7 +52,9 @@ func init() {
 
 	utilruntime.Must(multitenancyv1alpha1.AddToScheme(scheme))
 
-	utilruntime.Must(istionetworkingv1.AddToScheme(scheme))
+	utilruntime.Must(istioclientnetworkingv1.AddToScheme(scheme))
+
+	utilruntime.Must(istioclientsecurityv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

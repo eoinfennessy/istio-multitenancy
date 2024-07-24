@@ -45,3 +45,9 @@ rules:
   - sidecars
   verbs:
   - '*'
+- apiGroups:
+  - security.istio.io
+  resources:
+  - authorizationPolicies
+  verbs:
+  - '*'

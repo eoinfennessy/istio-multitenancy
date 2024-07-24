@@ -23,6 +23,9 @@ const (
 	// SingeltonResourceName is the name given to resources where only one resource should exist on the cluster or in a namespace
 	SingeltonResourceName = "default"
 
+	// ZoneAuthorizationPolicyName is the name given to all AuthorizationPolicies in a Zone
+	ZoneAuthorizationPolicyName = "allow-zone"
+
 	// ZoneFinalizer is the finalizer name the controller adds to Zones that need to be finalized during deletion
 	ZoneFinalizer = MetadataNamespace + "/zone-finalizer"
 
