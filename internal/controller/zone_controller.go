@@ -98,11 +98,8 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 		return ctrl.Result{}, r.finalize(ctx, z)
 	}
 
-	if result, err := r.reconcileServices(ctx, z); result != nil || err != nil {
-		if result != nil {
-			return *result, err
-		}
-		return ctrl.Result{}, err
+	if err = r.reconcileServices(ctx, z); err != nil {
+		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
 	}
 
 	if err = r.reconcileSidecars(ctx, z); err != nil {

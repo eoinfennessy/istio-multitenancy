@@ -31,7 +31,8 @@ func NewUnreconcilableError(text string) *UnreconcilableError {
 }
 
 func IsUnreconcilableError(err error) bool {
-	_, ok := err.(*UnreconcilableError)
+	var unreconcilableError *UnreconcilableError
+	ok := errors.As(err, &unreconcilableError)
 	return ok
 }
 

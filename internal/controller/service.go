@@ -34,12 +34,12 @@ import (
 	pkgerrors "github.com/eoinfennessy/istio-multitenancy/pkg/errors"
 )
 
-func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone) (*ctrl.Result, error) {
+func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone) error {
 	// Get list of Services that should be part of the Zone
 	svcs, err := r.listServicesForZone(ctx, z)
 	if err != nil {
 		z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to list Services")
-		return &ctrl.Result{}, err
+		return err
 	}
 
 	// Update each Service (if required) to include it in the Zone
@@ -52,14 +52,12 @@ func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone
 	for range svcs {
 		err = <-ch
 		if err != nil {
-			if zoneConflictErr, ok := err.(*pkgerrors.UnreconcilableError); ok {
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, zoneConflictErr.Error())
-				// We should not requeue because the Zone is currently unreconcilable
-				return &ctrl.Result{}, nil
+			if pkgerrors.IsUnreconcilableError(err) {
+				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, err.Error())
 			} else {
 				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to include Service in Zone")
-				return &ctrl.Result{}, err
 			}
+			return err
 		}
 	}
 
@@ -67,11 +65,10 @@ func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone
 	if err = r.cleanUpServices(ctx, z, func(service corev1.Service) bool {
 		return !slices.Contains(z.Spec.Namespaces, service.GetNamespace())
 	}); err != nil {
-
-		return &ctrl.Result{}, err
+		return err
 	}
 
-	return nil, nil
+	return nil
 }
 
 // cleanUpServices removes labels and annotations from Services that should no longer be part of the Zone
