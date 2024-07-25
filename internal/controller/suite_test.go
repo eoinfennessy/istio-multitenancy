@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
+	istioclientsecurityv1 "istio.io/client-go/pkg/apis/security/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -81,11 +82,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = multitenancyv1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-	err = istioclientnetworkingv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
+	Expect(multitenancyv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(istioclientnetworkingv1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(istioclientsecurityv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	// +kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
