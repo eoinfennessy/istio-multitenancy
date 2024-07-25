@@ -25,7 +25,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"istio.io/api/annotation"
+	istioapisecurityv1 "istio.io/api/security/v1"
 	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
+	istioclientsecurityv1 "istio.io/client-go/pkg/apis/security/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -223,7 +225,7 @@ var _ = Describe("Zone Controller", Ordered, func() {
 			})
 		})
 
-		When("reconciling Sidecars in the mesh", func() {
+		When("reconciling Sidecars", func() {
 			It("should create Sidecar resources in each Zone namespace", func() {
 				Eventually(func(g Gomega) {
 					for _, ns := range zone.Spec.Namespaces {
@@ -298,6 +300,89 @@ var _ = Describe("Zone Controller", Ordered, func() {
 							Name:      constants.SingeltonResourceName,
 						}
 						err := k8sClient.Get(ctx, sidecarKey, sidecar)
+						g.Expect(err).To(Not(BeNil()))
+						g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+					}).Should(Succeed())
+				})
+			})
+		})
+
+		When("reconciling AuthorizationPolicies", func() {
+			It("should create AuthorizationPolicies in each Zone namespace", func() {
+				Eventually(func(g Gomega) {
+					for _, ns := range zone.Spec.Namespaces {
+						ap := &istioclientsecurityv1.AuthorizationPolicy{}
+						apKey := types.NamespacedName{
+							Namespace: ns,
+							Name:      constants.ZoneAuthorizationPolicyName,
+						}
+						g.Expect(k8sClient.Get(ctx, apKey, ap)).To(Succeed())
+					}
+				}).Should(Succeed())
+			})
+
+			It("should configure the AuthorizationPolicy's spec correctly", func() {
+				Eventually(func(g Gomega) {
+					for _, ns := range zone.Spec.Namespaces {
+						ap := &istioclientsecurityv1.AuthorizationPolicy{}
+						apKey := types.NamespacedName{
+							Namespace: ns,
+							Name:      constants.ZoneAuthorizationPolicyName,
+						}
+						g.Expect(k8sClient.Get(ctx, apKey, ap)).To(Succeed())
+
+						g.Expect(ap.Spec.Action).To(Equal(istioapisecurityv1.AuthorizationPolicy_ALLOW))
+						g.Expect(ap.Spec.Rules).To(Not(BeEmpty()))
+						g.Expect(ap.Spec.Rules[0].From).To(Not(BeEmpty()))
+						g.Expect(ap.Spec.Rules[0].From[0].Source).To(Not(BeNil()))
+						g.Expect(ap.Spec.Rules[0].From[0].Source.Namespaces).To(Equal(zone.Spec.Namespaces))
+					}
+				}).Should(Succeed())
+			})
+
+			When("removing a namespace from a Zone's spec", func() {
+				var removedNamespace = blueZoneNamespaces[0]
+
+				BeforeAll(func() {
+					By("updating the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+					zone.Spec.Namespaces = blueZoneNamespaces[1:]
+					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+				})
+
+				AfterAll(func() {
+					By("re-adding the removed namespace to the Zone resource")
+					Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+					zone.Spec.Namespaces = blueZoneNamespaces
+					Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+				})
+
+				It("should update the AuthorizationPolicy rules to exclude the removed namespace", func() {
+					Eventually(func(g Gomega) {
+						for _, ns := range zone.Spec.Namespaces {
+							ap := &istioclientsecurityv1.AuthorizationPolicy{}
+							apKey := types.NamespacedName{
+								Namespace: ns,
+								Name:      constants.ZoneAuthorizationPolicyName,
+							}
+							g.Expect(k8sClient.Get(ctx, apKey, ap)).To(Succeed())
+
+							g.Expect(ap.Spec.Rules).To(Not(BeEmpty()))
+							g.Expect(ap.Spec.Rules[0].From).To(Not(BeEmpty()))
+							g.Expect(ap.Spec.Rules[0].From[0].Source).To(Not(BeNil()))
+							g.Expect(ap.Spec.Rules[0].From[0].Source.Namespaces).To(Equal(zone.Spec.Namespaces))
+						}
+					}).Should(Succeed())
+				})
+
+				It("should delete the AuthorizationPolicy in the namespace that was removed from the Zone", func() {
+					Eventually(func(g Gomega) {
+						ap := &istioclientsecurityv1.AuthorizationPolicy{}
+						apKey := types.NamespacedName{
+							Namespace: removedNamespace,
+							Name:      constants.ZoneAuthorizationPolicyName,
+						}
+						err := k8sClient.Get(ctx, apKey, ap)
 						g.Expect(err).To(Not(BeNil()))
 						g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 					}).Should(Succeed())

@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
+	istioclientsecurityv1 "istio.io/client-go/pkg/apis/security/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,6 +58,7 @@ type ZoneReconciler struct {
 // +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="networking.istio.io",resources=sidecars,verbs="*"
+// +kubebuilder:rbac:groups="security.istio.io",resources=authorizationPolicies,verbs="*"
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -66,7 +68,7 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 
 	// Fetch Zone resource
 	z := &v1alpha1.Zone{}
-	if err := r.Client.Get(ctx, req.NamespacedName, z); err != nil {
+	if err = r.Client.Get(ctx, req.NamespacedName, z); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Zone resource not found; Ignoring because it must have been deleted")
 			return ctrl.Result{}, nil
@@ -78,6 +80,10 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 
 	// Update status on return if different to old status
 	defer func(oldStatus *v1alpha1.ZoneStatus) {
+		if !controllerutil.ContainsFinalizer(z, constants.ZoneFinalizer) {
+			// Do not attempt status update when Zone has been deleted
+			return
+		}
 		if !reflect.DeepEqual(oldStatus, z.Status) {
 			if statusUpdateErr := r.Status().Update(ctx, z); statusUpdateErr != nil {
 				log.Error(err, "Failed to update Zone's status")
@@ -103,6 +109,10 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 	}
 
 	if err = r.reconcileSidecars(ctx, z); err != nil {
+		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
+	}
+
+	if err = r.reconcileAuthorizationPolicies(ctx, z); err != nil {
 		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
 	}
 
@@ -191,6 +201,7 @@ func (r *ZoneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Zone{}).
 		Owns(&istioclientnetworkingv1.Sidecar{}).
+		Owns(&istioclientsecurityv1.AuthorizationPolicy{}).
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceToReconcileRequests),
