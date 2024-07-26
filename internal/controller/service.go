@@ -147,7 +147,7 @@ func (r *ZoneReconciler) includeServiceInZone(ctx context.Context, z *v1alpha1.Z
 		metaChanged = true
 	}
 
-	exportToAnnotationValue := strings.Join(z.Spec.Namespaces, ",")
+	exportToAnnotationValue := strings.Join(getNamespacesForServiceExport(z, svc.GetName(), svc.GetNamespace()), ",")
 	if svc.GetAnnotations()[annotation.NetworkingExportTo.Name] != exportToAnnotationValue {
 		svc.SetAnnotations(map[string]string{annotation.NetworkingExportTo.Name: exportToAnnotationValue})
 		metaChanged = true
@@ -158,4 +158,21 @@ func (r *ZoneReconciler) includeServiceInZone(ctx context.Context, z *v1alpha1.Z
 		return r.Update(ctx, &svc)
 	}
 	return nil
+}
+
+// getNamespacesForServiceExport returns the Zone's namespaces combined with any
+// additional exports specified for the Service. If a wildcard has been specified
+// in the exports for the Service a slice containing only the wildcard is
+// returned.
+func getNamespacesForServiceExport(z *v1alpha1.Zone, svcName, svcNamespace string) []string {
+	for _, se := range z.Spec.ServiceExports {
+		if se.Name == svcName && se.Namespace == svcNamespace {
+			if slices.Contains(se.ToNamespaces, constants.Wildcard) {
+				return []string{constants.Wildcard}
+			} else {
+				return append(z.Spec.Namespaces, se.ToNamespaces...)
+			}
+		}
+	}
+	return z.Spec.Namespaces
 }

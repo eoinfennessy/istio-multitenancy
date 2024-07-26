@@ -46,6 +46,34 @@ spec:
                   type: string
                 minItems: 1
                 type: array
+              serviceExports:
+                description: ServiceExports can optionally be defined to export Services
+                  to namespaces outside the Zone.
+                items:
+                  description: ServiceExport defines a list of namespaces outside
+                    the Zone to export the specified Service to.
+                  properties:
+                    name:
+                      description: Name is the name of the Service to be exported.
+                      type: string
+                    namespace:
+                      description: Namespace is the namespace of the Service to be
+                        exported.
+                      type: string
+                    toNamespaces:
+                      description: |-
+                        ToNamespaces is a list of the namespaces the Service will be exported to. Use
+                        the wildcard ["*"] to export the service to the entire mesh.
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - namespace
+                  - toNamespaces
+                  type: object
+                type: array
             required:
             - namespaces
             type: object

@@ -9,3 +9,8 @@ spec:
   namespaces:
     - blue-a
     - blue-b
+  serviceExports:
+    - name: httpbin-1-blue-a
+      namespace: blue-a
+      toNamespaces:
+        - red-a

@@ -21,12 +21,32 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ServiceExport defines a list of namespaces outside the Zone to export the specified Service to.
+type ServiceExport struct {
+	// Name is the name of the Service to be exported.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace is the namespace of the Service to be exported.
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+
+	// ToNamespaces is a list of the namespaces the Service will be exported to. Use
+	// the wildcard ["*"] to export the service to the entire mesh.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	ToNamespaces []string `json:"toNamespaces"`
+}
+
 // ZoneSpec defines the desired state of Zone
 type ZoneSpec struct {
 	// Namespaces is a list of namespaces to include in the Zone
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	Namespaces []string `json:"namespaces"`
+
+	// ServiceExports can optionally be defined to export Services to namespaces outside the Zone.
+	ServiceExports []ServiceExport `json:"serviceExports,omitempty"`
 }
 
 // ZoneStatus defines the observed state of Zone

@@ -23,6 +23,9 @@ const (
 	// SingeltonResourceName is the name given to resources where only one resource should exist on the cluster or in a namespace
 	SingeltonResourceName = "default"
 
+	// Wildcard character
+	Wildcard = "*"
+
 	// ZoneAuthorizationPolicyName is the name given to all AuthorizationPolicies in a Zone
 	ZoneAuthorizationPolicyName = "allow-zone"
 
