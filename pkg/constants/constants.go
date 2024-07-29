@@ -29,6 +29,9 @@ const (
 	// ZoneAuthorizationPolicyName is the name given to all AuthorizationPolicies in a Zone
 	ZoneAuthorizationPolicyName = "allow-zone"
 
+	// ZoneExportPrefix is a prefix added to the name of resources that enable a Service to be exported from the Zone
+	ZoneExportPrefix = "zone-export-"
+
 	// ZoneFinalizer is the finalizer name the controller adds to Zones that need to be finalized during deletion
 	ZoneFinalizer = MetadataNamespace + "/zone-finalizer"
 
