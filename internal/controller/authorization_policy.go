@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 
 	istioapisecurityv1 "istio.io/api/security/v1"
 	isttioapitypev1beta1 "istio.io/api/type/v1beta1"
@@ -79,13 +80,7 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 			return istioapisecurityv1.AuthorizationPolicy{
 				Action:   istioapisecurityv1.AuthorizationPolicy_ALLOW,
 				Selector: &isttioapitypev1beta1.WorkloadSelector{MatchLabels: svc.Spec.Selector},
-				Rules: []*istioapisecurityv1.Rule{
-					{From: []*istioapisecurityv1.Rule_From{
-						{Source: &istioapisecurityv1.Source{
-							Namespaces: append(z.Spec.Namespaces, se.ToNamespaces...),
-						}},
-					}},
-				},
+				Rules:    createAuthorizationPolicyRulesForServiceExport(se.ToNamespaces, z.Spec.Namespaces),
 			}
 		}); err != nil {
 			return err
@@ -193,6 +188,23 @@ func (r *ZoneReconciler) constructAuthorizationPolicy(z *v1alpha1.Zone, apKey ty
 	controllerutil.SetControllerReference(z, ap, r.Scheme)
 
 	return ap
+}
+
+func createAuthorizationPolicyRulesForServiceExport(serviceExportNamespaces, zoneNamespaces []string) []*istioapisecurityv1.Rule {
+	var rules []*istioapisecurityv1.Rule
+	if slices.Contains(serviceExportNamespaces, constants.Wildcard) {
+		// A list of rules containing one empty rule applies the AuthorizationPolicy to traffic from all namespaces
+		rules = []*istioapisecurityv1.Rule{{}}
+	} else {
+		rules = []*istioapisecurityv1.Rule{
+			{From: []*istioapisecurityv1.Rule_From{
+				{Source: &istioapisecurityv1.Source{
+					Namespaces: append(zoneNamespaces, serviceExportNamespaces...),
+				}},
+			}},
+		}
+	}
+	return rules
 }
 
 func shouldAuthorizationPolicyBeDeleted(ap *istioclientsecurityv1.AuthorizationPolicy, nsSet map[string]struct{}, serviceExportKeysSet map[types.NamespacedName]struct{}) bool {
