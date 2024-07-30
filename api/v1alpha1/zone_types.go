@@ -38,6 +38,25 @@ type ServiceExport struct {
 	ToNamespaces []string `json:"toNamespaces"`
 }
 
+// AdditionalEgress defines additional service hosts outside the Zone that will
+// be exposed to Zone workloads matching the WorkloadSelector.
+type AdditionalEgress struct {
+	// WorkloadSelector is a map of labels used to select the workloads that will
+	// include the additional egress hosts. The targeted workloads must match all
+	// labels specified in WorkloadSelector.
+	// +kubebuilder:validation:Required
+	WorkloadSelector map[string]string `json:"workloadSelector"`
+
+	// Hosts is a list of additional service hosts that will be exposed to the
+	// specified workloads. Each host follows the <namespace>/<dns_name> format, and
+	// the wildcard "*" can be specified for both the namespace and (part of) the DNS
+	// name.
+	// See https://istio.io/latest/docs/reference/config/networking/sidecar/#IstioEgressListener for more info.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Hosts []string `json:"hosts"`
+}
+
 // ZoneSpec defines the desired state of Zone
 type ZoneSpec struct {
 	// Namespaces is a list of namespaces to include in the Zone
@@ -47,6 +66,10 @@ type ZoneSpec struct {
 
 	// ServiceExports can optionally be defined to export Services to namespaces outside the Zone.
 	ServiceExports []ServiceExport `json:"serviceExports,omitempty"`
+
+	// AdditionalEgress can optionally be defined to allow additional service hosts
+	// outside the Zone to be exposed to workloads that are part of the Zone.
+	AdditionalEgress []AdditionalEgress `json:"additionalEgress,omitempty"`
 }
 
 // ZoneStatus defines the observed state of Zone

@@ -29,6 +29,9 @@ const (
 	// ZoneAuthorizationPolicyName is the name given to all AuthorizationPolicies in a Zone
 	ZoneAuthorizationPolicyName = "allow-zone"
 
+	// ZoneEgressPrefix is a prefix added to the name of Sidecars targeting specific workloads in the Zone.
+	ZoneEgressPrefix = "zone-egress-"
+
 	// ZoneExportPrefix is a prefix added to the name of resources that enable a Service to be exported from the Zone
 	ZoneExportPrefix = "zone-export-"
 

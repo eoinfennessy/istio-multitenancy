@@ -234,7 +234,11 @@ var _ = Describe("Zone Controller", Ordered, func() {
 
 						g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
 						g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
-						expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+
+						expectedHosts := make([]string, len(zone.Spec.Namespaces))
+						for i, ns := range zone.Spec.Namespaces {
+							expectedHosts[i] = fmt.Sprintf("%s/*", ns)
+						}
 						g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
 					}
 				}).Should(Succeed())
@@ -269,7 +273,11 @@ var _ = Describe("Zone Controller", Ordered, func() {
 
 							g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
 							g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
-							expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+
+							expectedHosts := make([]string, len(zone.Spec.Namespaces))
+							for i, ns := range zone.Spec.Namespaces {
+								expectedHosts[i] = fmt.Sprintf("%s/*", ns)
+							}
 							g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
 						}
 					}).Should(Succeed())
