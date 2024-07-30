@@ -20,9 +20,12 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 
 	istioapisecurityv1 "istio.io/api/security/v1"
+	isttioapitypev1beta1 "istio.io/api/type/v1beta1"
 	istioclientsecurityv1 "istio.io/client-go/pkg/apis/security/v1"
+	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -37,53 +40,50 @@ import (
 )
 
 func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *v1alpha1.Zone) error {
-	log := logf.FromContext(ctx)
-
-	// Check for AuthorizationPolicy in each Zone namespace and create/update each if necessary
+	// Check for default AuthorizationPolicy in each Zone namespace and create/update each if necessary
 	for _, ns := range z.Spec.Namespaces {
 		apKey := types.NamespacedName{Namespace: ns, Name: constants.ZoneAuthorizationPolicyName}
-		ap := &istioclientsecurityv1.AuthorizationPolicy{}
-		err := r.Get(ctx, apKey, ap)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				msg := fmt.Sprintf("Error getting AuthorizationPolicy in namespace %s: %s", ns, err)
+		if err := r.reconcileAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
+			return istioapisecurityv1.AuthorizationPolicy{
+				Action: istioapisecurityv1.AuthorizationPolicy_ALLOW,
+				Rules: []*istioapisecurityv1.Rule{
+					{From: []*istioapisecurityv1.Rule_From{
+						{Source: &istioapisecurityv1.Source{
+							Namespaces: z.Spec.Namespaces,
+						}},
+					}},
+				},
+			}
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Check AuthorizationPolicy for each ServiceExport and create/update each if necessary
+	for _, se := range z.Spec.ServiceExports {
+		// Fetch Service associated with ServiceExport
+		svc := &v1.Service{}
+		if err := r.Get(ctx, types.NamespacedName{Name: se.Name, Namespace: se.Namespace}, svc); err != nil {
+			if apierrors.IsNotFound(err) {
+				msg := fmt.Sprintf("Service %s in namespace %s not found", se.Name, se.Namespace)
+				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
+				return &pkgerrors.UnreconcilableError{Err: err}
+			} else {
+				msg := fmt.Sprintf("Error fetching Service %s in namespace %s: %s", se.Name, se.Namespace, err)
 				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
 				return err
 			}
+		}
 
-			// AuthorizationPolicy doesn't exist; Create it
-			if err := r.Create(ctx, r.constructAuthorizationPolicy(z, ns)); err != nil {
-				msg := fmt.Sprintf("Error creating AuthorizationPolicy in namespace %s: %s", ns, err)
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
-				return err
+		apKey := types.NamespacedName{Namespace: se.Namespace, Name: constants.ZoneExportPrefix + se.Name}
+		if err := r.reconcileAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
+			return istioapisecurityv1.AuthorizationPolicy{
+				Action:   istioapisecurityv1.AuthorizationPolicy_ALLOW,
+				Selector: &isttioapitypev1beta1.WorkloadSelector{MatchLabels: svc.Spec.Selector},
+				Rules:    createAuthorizationPolicyRulesForServiceExport(se.ToNamespaces, z.Spec.Namespaces),
 			}
-		} else {
-			// AuthorizationPolicy exists; Check if it belongs to the Zone
-			labelVal, exists := ap.GetLabels()[constants.ZoneLabel]
-			if !exists {
-				// TODO: Would checking OwnerReferences be more appropriate?
-				msg := fmt.Sprintf("AuthorizationPolicy in namespace %s is not part of the Zone because it does not have a Zone label", ns)
-				log.Info(msg)
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
-				return pkgerrors.NewUnreconcilableError(msg)
-			} else if labelVal != z.GetName() {
-				msg := fmt.Sprintf("AuthorizationPolicy in namespace %s is already included in Zone %s", ns, labelVal)
-				log.Info(msg)
-				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
-				return pkgerrors.NewUnreconcilableError(msg)
-			}
-
-			// Update AuthorizationPolicies if necessary
-			newSpec := constructAuthorizationPolicySpec(z)
-			if !isAuthorizationPolicySpecEqual(&ap.Spec, &newSpec) {
-				copyAuthorizationPolicySpec(&newSpec, &ap.Spec)
-				err = r.Update(ctx, ap)
-				if err != nil {
-					msg := fmt.Sprintf("Error updating AuthorizationPolicy in namespace %s: %s", ns, err)
-					z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
-					return err
-				}
-			}
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -91,6 +91,55 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 		return err
 	}
 
+	return nil
+}
+
+func (r *ZoneReconciler) reconcileAuthorizationPolicy(ctx context.Context, z *v1alpha1.Zone, apKey types.NamespacedName, getAPSpec func() istioapisecurityv1.AuthorizationPolicy) error {
+	log := logf.FromContext(ctx)
+
+	ap := &istioclientsecurityv1.AuthorizationPolicy{}
+	err := r.Get(ctx, apKey, ap)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			msg := fmt.Sprintf("Error getting AuthorizationPolicy %s in namespace %s: %s", apKey.Name, apKey.Namespace, err)
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
+			return err
+		}
+
+		// AuthorizationPolicy doesn't exist; Create it
+		if err := r.Create(ctx, r.constructAuthorizationPolicy(z, apKey, getAPSpec)); err != nil {
+			msg := fmt.Sprintf("Error creating AuthorizationPolicy %s in namespace %s: %s", apKey.Name, apKey.Namespace, err)
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
+			return err
+		}
+	} else {
+		// AuthorizationPolicy exists; Check if it belongs to the Zone
+		labelVal, exists := ap.GetLabels()[constants.ZoneLabel]
+		if !exists {
+			// TODO: Would checking OwnerReferences be more appropriate?
+			msg := fmt.Sprintf("AuthorizationPolicy %s in namespace %s is not part of the Zone because it does not have a Zone label", apKey.Name, apKey.Namespace)
+			log.Info(msg)
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
+			return pkgerrors.NewUnreconcilableError(msg)
+		} else if labelVal != z.GetName() {
+			msg := fmt.Sprintf("AuthorizationPolicy %s in namespace %s is already included in Zone %s", apKey.Name, apKey.Namespace, labelVal)
+			log.Info(msg)
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
+			return pkgerrors.NewUnreconcilableError(msg)
+		}
+
+		// Update AuthorizationPolicies if necessary
+		newSpec := getAPSpec()
+		if !isAuthorizationPolicySpecEqual(&ap.Spec, &newSpec) {
+			copyAuthorizationPolicySpec(&newSpec, &ap.Spec)
+			err = r.Update(ctx, ap)
+			if err != nil {
+				msg := fmt.Sprintf("Error updating AuthorizationPolicy %s in namespace %s: %s", apKey.Name, apKey.Namespace, err)
+				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -110,8 +159,12 @@ func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1
 	for _, ns := range z.Spec.Namespaces {
 		nsSet[ns] = struct{}{}
 	}
+	serviceExportKeysSet := make(map[types.NamespacedName]struct{}, len(z.Spec.ServiceExports))
+	for _, se := range z.Spec.ServiceExports {
+		serviceExportKeysSet[types.NamespacedName{Namespace: se.Namespace, Name: constants.ZoneExportPrefix + se.Name}] = struct{}{}
+	}
 	for _, ap := range apList.Items {
-		if _, exists := nsSet[ap.GetNamespace()]; !exists {
+		if shouldAuthorizationPolicyBeDeleted(ap, nsSet, serviceExportKeysSet) {
 			err = r.Delete(ctx, ap)
 			if err != nil {
 				msg := fmt.Sprintf("Failed to delete default AuthorizationPolicy in namespace %s: %s", ap.GetNamespace(), err)
@@ -123,31 +176,46 @@ func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1
 	return nil
 }
 
-func (r *ZoneReconciler) constructAuthorizationPolicy(z *v1alpha1.Zone, namespace string) *istioclientsecurityv1.AuthorizationPolicy {
+func (r *ZoneReconciler) constructAuthorizationPolicy(z *v1alpha1.Zone, apKey types.NamespacedName, getAPSpec func() istioapisecurityv1.AuthorizationPolicy) *istioclientsecurityv1.AuthorizationPolicy {
 	ap := &istioclientsecurityv1.AuthorizationPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      constants.ZoneAuthorizationPolicyName,
-			Namespace: namespace,
+			Name:      apKey.Name,
+			Namespace: apKey.Namespace,
 			Labels:    map[string]string{constants.ZoneLabel: z.GetName()},
 		},
-		Spec: constructAuthorizationPolicySpec(z),
+		Spec: getAPSpec(),
 	}
 	controllerutil.SetControllerReference(z, ap, r.Scheme)
 
 	return ap
 }
 
-func constructAuthorizationPolicySpec(z *v1alpha1.Zone) istioapisecurityv1.AuthorizationPolicy {
-	return istioapisecurityv1.AuthorizationPolicy{
-		Action: istioapisecurityv1.AuthorizationPolicy_ALLOW,
-		Rules: []*istioapisecurityv1.Rule{
+func createAuthorizationPolicyRulesForServiceExport(serviceExportNamespaces, zoneNamespaces []string) []*istioapisecurityv1.Rule {
+	var rules []*istioapisecurityv1.Rule
+	if slices.Contains(serviceExportNamespaces, constants.Wildcard) {
+		// A list of rules containing one empty rule applies the AuthorizationPolicy to traffic from all namespaces
+		rules = []*istioapisecurityv1.Rule{{}}
+	} else {
+		rules = []*istioapisecurityv1.Rule{
 			{From: []*istioapisecurityv1.Rule_From{
 				{Source: &istioapisecurityv1.Source{
-					Namespaces: z.Spec.Namespaces,
+					Namespaces: append(zoneNamespaces, serviceExportNamespaces...),
 				}},
 			}},
-		},
+		}
 	}
+	return rules
+}
+
+func shouldAuthorizationPolicyBeDeleted(ap *istioclientsecurityv1.AuthorizationPolicy, nsSet map[string]struct{}, serviceExportKeysSet map[types.NamespacedName]struct{}) bool {
+	if _, exists := nsSet[ap.Namespace]; !exists {
+		return true
+	}
+	if ap.Name == constants.ZoneAuthorizationPolicyName {
+		return false
+	}
+	_, exists := serviceExportKeysSet[types.NamespacedName{Namespace: ap.Namespace, Name: ap.Name}]
+	return !exists
 }
 
 func isAuthorizationPolicySpecEqual(a, b *istioapisecurityv1.AuthorizationPolicy) bool {

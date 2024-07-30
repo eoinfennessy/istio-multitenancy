@@ -101,24 +101,7 @@ var _ = Describe("Zone Controller", Ordered, func() {
 
 			BeforeAll(func() {
 				By("creating Services in the blue zone")
-				blueZoneServices = make([]corev1.Service, 0, len(blueZoneNamespaces)*svcCountPerNS)
-				for _, ns := range blueZoneNamespaces {
-					for svcNumber := range svcCountPerNS {
-						svc := corev1.Service{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      fmt.Sprintf("%s-%d", ns, svcNumber),
-								Namespace: ns,
-							},
-							Spec: corev1.ServiceSpec{
-								Ports: []corev1.ServicePort{
-									{Port: 8080},
-								},
-							},
-						}
-						blueZoneServices = append(blueZoneServices, svc)
-						Expect(k8sClient.Create(ctx, &svc)).To(Succeed())
-					}
-				}
+				blueZoneServices = createServices(ctx, blueZoneNamespaces, svcCountPerNS)
 			})
 
 			AfterAll(func() {
@@ -389,5 +372,120 @@ var _ = Describe("Zone Controller", Ordered, func() {
 				})
 			})
 		})
+
+		When("adding a ServiceExport", func() {
+			const (
+				serviceCountPerNS        = 2
+				serviceExportName        = "blue-a-0"
+				serviceExportNamespace   = "blue-a"
+				serviceExportToNamespace = "red-a"
+			)
+			var blueZoneServices []corev1.Service
+
+			BeforeAll(func() {
+				By("creating Services in the blue zone and adding the ServiceExport to the Zone's spec")
+				blueZoneServices = createServices(ctx, blueZoneNamespaces, serviceCountPerNS)
+
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.ServiceExports = []v1alpha1.ServiceExport{
+					{Name: serviceExportName, Namespace: serviceExportNamespace, ToNamespaces: []string{serviceExportToNamespace}},
+				}
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			AfterAll(func() {
+				By("cleaning up Services in the blue zone and removing the ServiceExport from the Zone's spec")
+				for _, svc := range blueZoneServices {
+					Expect(k8sClient.Delete(ctx, &svc)).To(Succeed())
+					svcKey := types.NamespacedName{Name: svc.GetName(), Namespace: svc.GetNamespace()}
+					Eventually(k8sClient.Get).WithArguments(ctx, svcKey, &svc).Should(MatchError(errors.IsNotFound, "IsNotFound"))
+				}
+
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.ServiceExports = nil
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			It("should add the additional namespace to the exported Service's exportTo annotation", func() {
+				Eventually(func(g Gomega) {
+					svcKey := types.NamespacedName{Name: serviceExportName, Namespace: serviceExportNamespace}
+					s := &corev1.Service{}
+					g.Expect(k8sClient.Get(ctx, svcKey, s)).To(Succeed())
+
+					g.Expect(strings.Contains(s.Annotations[annotation.NetworkingExportTo.Name], serviceExportToNamespace)).To(BeTrue())
+				}).Should(Succeed())
+			})
+
+			It("should not add the additional namespace to any other Service's exportTo annotation", func() {
+				Eventually(func(g Gomega) {
+					for _, svc := range blueZoneServices {
+						if svc.GetName() == serviceExportName && svc.GetNamespace() == serviceExportNamespace {
+							continue
+						}
+						svcKey := types.NamespacedName{Name: svc.Name, Namespace: svc.Namespace}
+						s := &corev1.Service{}
+						g.Expect(k8sClient.Get(ctx, svcKey, s)).To(Succeed())
+
+						g.Expect(strings.Contains(s.Annotations[annotation.NetworkingExportTo.Name], serviceExportToNamespace)).To(BeFalse())
+					}
+				}).Should(Succeed())
+			})
+
+			It("should create an AuthorizationPolicy for the ServiceExport", func() {
+				Eventually(func(g Gomega) {
+					apKey := types.NamespacedName{Name: constants.ZoneExportPrefix + serviceExportName, Namespace: serviceExportNamespace}
+					ap := &istioclientsecurityv1.AuthorizationPolicy{}
+					g.Expect(k8sClient.Get(ctx, apKey, ap)).To(Succeed())
+
+					g.Expect(ap.Spec.Action).To(Equal(istioapisecurityv1.AuthorizationPolicy_ALLOW))
+
+					g.Expect(ap.Spec.Rules).To(Not(BeEmpty()))
+					g.Expect(ap.Spec.Rules[0].From).To(Not(BeEmpty()))
+					g.Expect(ap.Spec.Rules[0].From[0].Source).To(Not(BeNil()))
+					g.Expect(ap.Spec.Rules[0].From[0].Source.Namespaces).To(Equal(append(zone.Spec.Namespaces, serviceExportToNamespace)))
+
+					g.Expect(ap.Spec.Selector.MatchLabels).To(Not(BeEmpty()))
+					g.Expect(ap.Spec.Selector.MatchLabels["app"]).To(Equal(serviceExportName))
+				}).Should(Succeed())
+			})
+
+			It("should not create an AuthorizationPolicy for any other Services", func() {
+				Eventually(func(g Gomega) {
+					for _, svc := range blueZoneServices {
+						if svc.GetName() == serviceExportName && svc.GetNamespace() == serviceExportNamespace {
+							continue
+						}
+						apKey := types.NamespacedName{Name: constants.ZoneExportPrefix + svc.Name, Namespace: svc.GetNamespace()}
+						ap := &istioclientsecurityv1.AuthorizationPolicy{}
+						g.Expect(k8sClient.Get(ctx, apKey, ap)).To(MatchError(errors.IsNotFound, "IsNotFound"))
+					}
+				}).Should(Succeed())
+			})
+		})
 	})
 })
+
+func createServices(ctx context.Context, namespaces []string, svcCountPerNS int) []corev1.Service {
+	services := make([]corev1.Service, 0, len(namespaces)*svcCountPerNS)
+	for _, ns := range namespaces {
+		for svcNumber := range svcCountPerNS {
+			svc := corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("%s-%d", ns, svcNumber),
+					Namespace: ns,
+				},
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
+						{Port: 8080},
+					},
+					Selector: map[string]string{
+						"app": fmt.Sprintf("%s-%d", ns, svcNumber),
+					},
+				},
+			}
+			services = append(services, svc)
+			Expect(k8sClient.Create(ctx, &svc)).To(Succeed())
+		}
+	}
+	return services
+}
