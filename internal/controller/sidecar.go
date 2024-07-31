@@ -39,10 +39,7 @@ import (
 )
 
 func (r *ZoneReconciler) reconcileSidecars(ctx context.Context, z *v1alpha1.Zone) error {
-	zoneHosts := make([]string, len(z.Spec.Namespaces))
-	for i, ns := range z.Spec.Namespaces {
-		zoneHosts[i] = fmt.Sprintf("%s/*", ns)
-	}
+	zoneHosts := getZoneHosts(z.Spec.Namespaces)
 
 	// Check for Sidecar in each Zone namespace and create/update each if necessary
 	for _, ns := range z.Spec.Namespaces {
@@ -68,7 +65,7 @@ func (r *ZoneReconciler) reconcileSidecars(ctx context.Context, z *v1alpha1.Zone
 			return err
 		}
 
-		sidecarName := fmt.Sprintf("%s%d", constants.ZoneEgressPrefix, workloadHash)
+		sidecarName := getSidecarNameFromHash(workloadHash)
 		hosts := append(zoneHosts, ae.Hosts...)
 
 		for _, ns := range z.Spec.Namespaces {
@@ -169,7 +166,7 @@ func (r *ZoneReconciler) cleanUpSidecars(ctx context.Context, z *v1alpha1.Zone) 
 			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
 			return err
 		}
-		additionalSidecarNames[fmt.Sprintf("%s%d", constants.ZoneEgressPrefix, workloadSelectorHash)] = struct{}{}
+		additionalSidecarNames[getSidecarNameFromHash(workloadSelectorHash)] = struct{}{}
 	}
 
 	for _, sidecar := range sidecarList.Items {
@@ -197,6 +194,18 @@ func (r *ZoneReconciler) constructSidecar(z *v1alpha1.Zone, sidecarKey types.Nam
 	controllerutil.SetControllerReference(z, sidecar, r.Scheme)
 
 	return sidecar
+}
+
+func getSidecarNameFromHash(hash uint32) string {
+	return fmt.Sprintf("%s%d", constants.ZoneEgressPrefix, hash)
+}
+
+func getZoneHosts(zoneNamespaces []string) []string {
+	zoneHosts := make([]string, len(zoneNamespaces))
+	for i, ns := range zoneNamespaces {
+		zoneHosts[i] = fmt.Sprintf("%s/*", ns)
+	}
+	return zoneHosts
 }
 
 func hashWorkloadSelector(workloadSelector map[string]string) (uint32, error) {
