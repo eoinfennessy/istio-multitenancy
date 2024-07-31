@@ -43,7 +43,7 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 	// Check for default AuthorizationPolicy in each Zone namespace and create/update each if necessary
 	for _, ns := range z.Spec.Namespaces {
 		apKey := types.NamespacedName{Namespace: ns, Name: constants.ZoneAuthorizationPolicyName}
-		if err := r.reconcileAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
+		if err := r.createOrUpdateAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
 			return istioapisecurityv1.AuthorizationPolicy{
 				Action: istioapisecurityv1.AuthorizationPolicy_ALLOW,
 				Rules: []*istioapisecurityv1.Rule{
@@ -76,7 +76,7 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 		}
 
 		apKey := types.NamespacedName{Namespace: se.Namespace, Name: constants.ZoneExportPrefix + se.Name}
-		if err := r.reconcileAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
+		if err := r.createOrUpdateAuthorizationPolicy(ctx, z, apKey, func() istioapisecurityv1.AuthorizationPolicy {
 			return istioapisecurityv1.AuthorizationPolicy{
 				Action:   istioapisecurityv1.AuthorizationPolicy_ALLOW,
 				Selector: &isttioapitypev1beta1.WorkloadSelector{MatchLabels: svc.Spec.Selector},
@@ -94,7 +94,7 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 	return nil
 }
 
-func (r *ZoneReconciler) reconcileAuthorizationPolicy(ctx context.Context, z *v1alpha1.Zone, apKey types.NamespacedName, getAPSpec func() istioapisecurityv1.AuthorizationPolicy) error {
+func (r *ZoneReconciler) createOrUpdateAuthorizationPolicy(ctx context.Context, z *v1alpha1.Zone, apKey types.NamespacedName, getAPSpec func() istioapisecurityv1.AuthorizationPolicy) error {
 	log := logf.FromContext(ctx)
 
 	ap := &istioclientsecurityv1.AuthorizationPolicy{}

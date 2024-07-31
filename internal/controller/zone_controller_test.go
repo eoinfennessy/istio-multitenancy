@@ -234,7 +234,8 @@ var _ = Describe("Zone Controller", Ordered, func() {
 
 						g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
 						g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
-						expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+
+						expectedHosts := getZoneHosts(zone.Spec.Namespaces)
 						g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
 					}
 				}).Should(Succeed())
@@ -269,7 +270,8 @@ var _ = Describe("Zone Controller", Ordered, func() {
 
 							g.Expect(len(sidecar.Spec.Egress)).To(Equal(1))
 							g.Expect(len(sidecar.Spec.Egress[0].Hosts)).To(Equal(len(zone.Spec.Namespaces)))
-							expectedHosts := constructSidecarSpec(zone).Egress[0].Hosts
+
+							expectedHosts := getZoneHosts(zone.Spec.Namespaces)
 							g.Expect(sidecar.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
 						}
 					}).Should(Succeed())
@@ -458,6 +460,48 @@ var _ = Describe("Zone Controller", Ordered, func() {
 						apKey := types.NamespacedName{Name: constants.ZoneExportPrefix + svc.Name, Namespace: svc.GetNamespace()}
 						ap := &istioclientsecurityv1.AuthorizationPolicy{}
 						g.Expect(k8sClient.Get(ctx, apKey, ap)).To(MatchError(errors.IsNotFound, "IsNotFound"))
+					}
+				}).Should(Succeed())
+			})
+		})
+
+		When("adding an AdditionalEgress item", func() {
+			workloadSelector := map[string]string{
+				"app": "foo",
+				"bar": "baz",
+			}
+			hosts := []string{"my-ns/*", "istio-egress/egress-gateway"}
+
+			BeforeAll(func() {
+				By("updating the Zone's spec to include an AdditionalEgress item")
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.AdditionalEgress = []v1alpha1.AdditionalEgress{
+					{
+						WorkloadSelector: workloadSelector,
+						Hosts:            hosts,
+					},
+				}
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			AfterAll(func() {
+				By("removing Additional from the Zone's spec")
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.AdditionalEgress = nil
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			It("should create a well-formed Sidecar resource for the AdditionalEgress in each Zone namespace", func() {
+				Eventually(func(g Gomega) {
+					workloadSelectorHash, _ := hashWorkloadSelector(workloadSelector)
+					sidecarName := getSidecarNameFromHash(workloadSelectorHash)
+					for _, ns := range zone.Spec.Namespaces {
+						s := &istioclientnetworkingv1.Sidecar{}
+						g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: sidecarName, Namespace: ns}, s)).To(Succeed())
+
+						expectedHosts := append(getZoneHosts(zone.Spec.Namespaces), hosts...)
+						g.Expect(s.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
+						g.Expect(s.Spec.WorkloadSelector.Labels).To(Equal(workloadSelector))
 					}
 				}).Should(Succeed())
 			})

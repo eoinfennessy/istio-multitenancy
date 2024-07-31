@@ -14,3 +14,9 @@ spec:
       namespace: blue-a
       toNamespaces:
         - red-a
+  additionalEgress:
+    - workloadSelector:
+        app: sleep
+      hosts:
+        - unzoned/httpbin
+        - common/*

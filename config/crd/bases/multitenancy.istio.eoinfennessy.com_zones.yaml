@@ -39,6 +39,39 @@ spec:
           spec:
             description: ZoneSpec defines the desired state of Zone
             properties:
+              additionalEgress:
+                description: |-
+                  AdditionalEgress can optionally be defined to allow additional service hosts
+                  outside the Zone to be exposed to workloads that are part of the Zone.
+                items:
+                  description: |-
+                    AdditionalEgress defines additional service hosts outside the Zone that will
+                    be exposed to Zone workloads matching the WorkloadSelector.
+                  properties:
+                    hosts:
+                      description: |-
+                        Hosts is a list of additional service hosts that will be exposed to the
+                        specified workloads. Each host follows the <namespace>/<dns_name> format, and
+                        the wildcard "*" can be specified for both the namespace and (part of) the DNS
+                        name.
+                        See https://istio.io/latest/docs/reference/config/networking/sidecar/#IstioEgressListener for more info.
+                      items:
+                        type: string
+                      minItems: 1
+                      type: array
+                    workloadSelector:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        WorkloadSelector is a map of labels used to select the workloads that will
+                        include the additional egress hosts. The targeted workloads must match all
+                        labels specified in WorkloadSelector.
+                      type: object
+                  required:
+                  - hosts
+                  - workloadSelector
+                  type: object
+                type: array
               namespaces:
                 description: Namespaces is a list of namespaces to include in the
                   Zone
