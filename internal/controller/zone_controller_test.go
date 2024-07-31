@@ -32,7 +32,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
 	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
@@ -504,6 +506,33 @@ var _ = Describe("Zone Controller", Ordered, func() {
 						g.Expect(s.Spec.Egress[0].Hosts).To(Equal(expectedHosts))
 						g.Expect(s.Spec.WorkloadSelector.Labels).To(Equal(workloadSelector))
 					}
+				}).Should(Succeed())
+			})
+		})
+
+		When("setting ManageAuthorizationPolicies to false", func() {
+			BeforeAll(func() {
+				By("updating the Zone's spec to set ManageAuthorizationPolicies to false")
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.ManageAuthorizationPolicies = false
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			AfterAll(func() {
+				By("updating the Zone's spec to set ManageAuthorizationPolicies to true")
+				Expect(k8sClient.Get(ctx, zoneKey, zone)).To(Succeed())
+				zone.Spec.ManageAuthorizationPolicies = true
+				Expect(k8sClient.Update(ctx, zone)).To(Succeed())
+			})
+
+			It("should delete all AuthorizationPolicies", func() {
+				Eventually(func(g Gomega) {
+					apList := &istioclientsecurityv1.AuthorizationPolicyList{}
+					g.Expect(k8sClient.List(ctx, apList, &client.ListOptions{
+						LabelSelector: labels.SelectorFromSet(labels.Set{constants.ZoneLabel: zone.GetName()}),
+					})).To(Succeed())
+
+					g.Expect(len(apList.Items)).To(BeZero())
 				}).Should(Succeed())
 			})
 		})
