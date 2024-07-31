@@ -72,6 +72,14 @@ spec:
                   - workloadSelector
                   type: object
                 type: array
+              manageAuthorizationPolicies:
+                default: true
+                description: |-
+                  ManageAuthorizationPolicies can be provided to specify whether
+                  AuthorizationPolicies should be managed for the Zone. Updating the value to
+                  false will cause any AuthorizationPolicies previously created for the Zone to
+                  be deleted. The default value is true.
+                type: boolean
               namespaces:
                 description: Namespaces is a list of namespaces to include in the
                   Zone
