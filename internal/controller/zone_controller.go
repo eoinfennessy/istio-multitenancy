@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 
 	istioclientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
@@ -104,6 +105,10 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 		return ctrl.Result{}, r.finalize(ctx, z)
 	}
 
+	if err = r.ensureNamespacesExist(ctx, z); err != nil {
+		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
+	}
+
 	if err = r.reconcileServices(ctx, z); err != nil {
 		return ctrl.Result{}, pkgerrors.IgnoreUnreconcilableError(err)
 	}
@@ -166,11 +171,53 @@ func (r *ZoneReconciler) finalize(ctx context.Context, z *v1alpha1.Zone) error {
 	return nil
 }
 
+func (r *ZoneReconciler) ensureNamespacesExist(ctx context.Context, z *v1alpha1.Zone) error {
+	nsList := &corev1.NamespaceList{}
+	if err := r.List(ctx, nsList); err != nil {
+		z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to list Namespaces")
+		return err
+	}
+
+	namespaces := make(map[string]struct{}, len(nsList.Items))
+	for _, ns := range nsList.Items {
+		namespaces[ns.GetName()] = struct{}{}
+	}
+	for _, ns := range z.Spec.Namespaces {
+		if _, exists := namespaces[ns]; !exists {
+			msg := fmt.Sprintf("Namespace %s is listed in Zone's spec but does not exist", ns)
+			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonUnreconcilable, msg)
+			return pkgerrors.NewUnreconcilableError(msg)
+		}
+	}
+	return nil
+}
+
 func (r *ZoneReconciler) mapServiceToReconcileRequests(ctx context.Context, service client.Object) []reconcile.Request {
 	zones := &v1alpha1.ZoneList{}
 	if err := r.List(ctx, zones, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(
 			namespacesField, service.GetNamespace(),
+		),
+	}); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, len(zones.Items))
+	for i, z := range zones.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name: z.GetName(),
+			},
+		}
+	}
+	return requests
+}
+
+func (r *ZoneReconciler) mapNamespaceToReconcileRequests(ctx context.Context, namespace client.Object) []reconcile.Request {
+	zones := &v1alpha1.ZoneList{}
+	if err := r.List(ctx, zones, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(
+			namespacesField, namespace.GetName(),
 		),
 	}); err != nil {
 		return nil
@@ -207,6 +254,10 @@ func (r *ZoneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.mapServiceToReconcileRequests),
 			// TODO: Narrow down predicates: I think we only care if the labels or annotations have changed
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		Watches(
+			&corev1.Namespace{},
+			handler.EnqueueRequestsFromMapFunc(r.mapNamespaceToReconcileRequests),
 		).
 		Complete(r)
 }
