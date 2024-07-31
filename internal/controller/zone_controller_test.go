@@ -83,7 +83,8 @@ var _ = Describe("Zone Controller", Ordered, func() {
 					Name: blueZoneName,
 				},
 				Spec: v1alpha1.ZoneSpec{
-					Namespaces: blueZoneNamespaces,
+					Namespaces:                  blueZoneNamespaces,
+					ManageAuthorizationPolicies: true,
 				},
 			}
 			Expect(k8sClient.Create(ctx, zone)).To(Succeed())

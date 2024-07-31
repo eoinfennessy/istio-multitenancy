@@ -70,6 +70,14 @@ type ZoneSpec struct {
 	// AdditionalEgress can optionally be defined to allow additional service hosts
 	// outside the Zone to be exposed to workloads that are part of the Zone.
 	AdditionalEgress []AdditionalEgress `json:"additionalEgress,omitempty"`
+
+	// ManageAuthorizationPolicies can be provided to specify whether
+	// AuthorizationPolicies should be managed for the Zone. Updating the value to
+	// false will cause any AuthorizationPolicies previously created for the Zone to
+	// be deleted. The default value is true.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=true
+	ManageAuthorizationPolicies bool `json:"manageAuthorizationPolicies"`
 }
 
 // ZoneStatus defines the observed state of Zone

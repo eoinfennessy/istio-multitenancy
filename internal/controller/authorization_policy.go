@@ -40,6 +40,11 @@ import (
 )
 
 func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *v1alpha1.Zone) error {
+	// Clean up all AuthorizationPolicies that were previously managed by the Zone and return
+	if !z.Spec.ManageAuthorizationPolicies {
+		return r.cleanUpAuthorizationPolicies(ctx, z, func(_ *istioclientsecurityv1.AuthorizationPolicy) bool { return true })
+	}
+
 	// Check for default AuthorizationPolicy in each Zone namespace and create/update each if necessary
 	for _, ns := range z.Spec.Namespaces {
 		apKey := types.NamespacedName{Namespace: ns, Name: constants.ZoneAuthorizationPolicyName}
@@ -87,7 +92,30 @@ func (r *ZoneReconciler) reconcileAuthorizationPolicies(ctx context.Context, z *
 		}
 	}
 
-	if err := r.cleanUpAuthorizationPolicies(ctx, z); err != nil {
+	zoneNamespaces := make(map[string]struct{}, len(z.Spec.Namespaces))
+	for _, ns := range z.Spec.Namespaces {
+		zoneNamespaces[ns] = struct{}{}
+	}
+
+	serviceExportKeys := make(map[types.NamespacedName]struct{}, len(z.Spec.ServiceExports))
+	for _, se := range z.Spec.ServiceExports {
+		serviceExportKeys[types.NamespacedName{Namespace: se.Namespace, Name: constants.ZoneExportPrefix + se.Name}] = struct{}{}
+	}
+
+	// Clean up AuthorizationPolicies that should no longer be managed by the Zone
+	err := r.cleanUpAuthorizationPolicies(ctx, z, func(ap *istioclientsecurityv1.AuthorizationPolicy) bool {
+		if _, exists := zoneNamespaces[ap.Namespace]; !exists {
+			return true
+		}
+		if ap.Name == constants.ZoneAuthorizationPolicyName {
+			return false
+		}
+		if _, exists := serviceExportKeys[types.NamespacedName{Namespace: ap.Namespace, Name: ap.Name}]; !exists {
+			return true
+		}
+		return false
+	})
+	if err != nil {
 		return err
 	}
 
@@ -143,8 +171,9 @@ func (r *ZoneReconciler) createOrUpdateAuthorizationPolicy(ctx context.Context, 
 	return nil
 }
 
-// cleanUpAuthorizationPolicies deletes AuthorizationPolicies that should no longer be included in the Zone
-func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1alpha1.Zone) error {
+// cleanUpAuthorizationPolicies deletes all AuthorizationPolicies that match the
+// ZoneLabel and return true when passed to the predicate function.
+func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1alpha1.Zone, predicate func(ap *istioclientsecurityv1.AuthorizationPolicy) bool) error {
 	apList := &istioclientsecurityv1.AuthorizationPolicyList{}
 	err := r.List(ctx, apList, &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{constants.ZoneLabel: z.GetName()})},
@@ -155,19 +184,11 @@ func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1
 		return err
 	}
 
-	nsSet := make(map[string]struct{}, len(z.Spec.Namespaces))
-	for _, ns := range z.Spec.Namespaces {
-		nsSet[ns] = struct{}{}
-	}
-	serviceExportKeysSet := make(map[types.NamespacedName]struct{}, len(z.Spec.ServiceExports))
-	for _, se := range z.Spec.ServiceExports {
-		serviceExportKeysSet[types.NamespacedName{Namespace: se.Namespace, Name: constants.ZoneExportPrefix + se.Name}] = struct{}{}
-	}
 	for _, ap := range apList.Items {
-		if shouldAuthorizationPolicyBeDeleted(ap, nsSet, serviceExportKeysSet) {
+		if predicate(ap) {
 			err = r.Delete(ctx, ap)
 			if err != nil {
-				msg := fmt.Sprintf("Failed to delete default AuthorizationPolicy in namespace %s: %s", ap.GetNamespace(), err)
+				msg := fmt.Sprintf("Failed to delete AuthorizationPolicy %s in namespace %s: %s", ap.GetName(), ap.GetNamespace(), err)
 				z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
 				return err
 			}
@@ -205,17 +226,6 @@ func createAuthorizationPolicyRulesForServiceExport(serviceExportNamespaces, zon
 		}
 	}
 	return rules
-}
-
-func shouldAuthorizationPolicyBeDeleted(ap *istioclientsecurityv1.AuthorizationPolicy, nsSet map[string]struct{}, serviceExportKeysSet map[types.NamespacedName]struct{}) bool {
-	if _, exists := nsSet[ap.Namespace]; !exists {
-		return true
-	}
-	if ap.Name == constants.ZoneAuthorizationPolicyName {
-		return false
-	}
-	_, exists := serviceExportKeysSet[types.NamespacedName{Namespace: ap.Namespace, Name: ap.Name}]
-	return !exists
 }
 
 func isAuthorizationPolicySpecEqual(a, b *istioapisecurityv1.AuthorizationPolicy) bool {
