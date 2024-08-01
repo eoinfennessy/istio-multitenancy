@@ -72,7 +72,7 @@ func (r *ZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 	z := &v1alpha1.Zone{}
 	if err = r.Client.Get(ctx, req.NamespacedName, z); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Zone resource not found; Ignoring because it must have been deleted")
+			// Zone has been deleted: Do not requeue
 			return ctrl.Result{}, nil
 		} else {
 			log.Error(err, "Failed to fetch Zone resource; Requeuing")
