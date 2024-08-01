@@ -60,7 +60,7 @@ type ZoneReconciler struct {
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="networking.istio.io",resources=sidecars,verbs="*"
-// +kubebuilder:rbac:groups="security.istio.io",resources=authorizationPolicies,verbs="*"
+// +kubebuilder:rbac:groups="security.istio.io",resources=authorizationpolicies,verbs="*"
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
