@@ -56,6 +56,6 @@ rules:
 - apiGroups:
   - security.istio.io
   resources:
-  - authorizationPolicies
+  - authorizationpolicies
   verbs:
   - '*'
