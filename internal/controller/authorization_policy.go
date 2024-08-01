@@ -135,6 +135,7 @@ func (r *ZoneReconciler) createOrUpdateAuthorizationPolicy(ctx context.Context, 
 		}
 
 		// AuthorizationPolicy doesn't exist; Create it
+		log.Info(fmt.Sprintf("Creating AuthorizationPolicy %s in namespace %s", apKey.Name, apKey.Namespace))
 		if err := r.Create(ctx, r.constructAuthorizationPolicy(z, apKey, getAPSpec)); err != nil {
 			msg := fmt.Sprintf("Error creating AuthorizationPolicy %s in namespace %s: %s", apKey.Name, apKey.Namespace, err)
 			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
@@ -160,6 +161,7 @@ func (r *ZoneReconciler) createOrUpdateAuthorizationPolicy(ctx context.Context, 
 		newSpec := getAPSpec()
 		if !isAuthorizationPolicySpecEqual(&ap.Spec, &newSpec) {
 			copyAuthorizationPolicySpec(&newSpec, &ap.Spec)
+			log.Info(fmt.Sprintf("Updating AuthorizationPolicy %s in namespace %s", apKey.Name, apKey.Namespace))
 			err = r.Update(ctx, ap)
 			if err != nil {
 				msg := fmt.Sprintf("Error updating AuthorizationPolicy %s in namespace %s: %s", apKey.Name, apKey.Namespace, err)
@@ -174,6 +176,8 @@ func (r *ZoneReconciler) createOrUpdateAuthorizationPolicy(ctx context.Context, 
 // cleanUpAuthorizationPolicies deletes all AuthorizationPolicies that match the
 // ZoneLabel and return true when passed to the predicate function.
 func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1alpha1.Zone, predicate func(ap *istioclientsecurityv1.AuthorizationPolicy) bool) error {
+	log := logf.FromContext(ctx)
+
 	apList := &istioclientsecurityv1.AuthorizationPolicyList{}
 	err := r.List(ctx, apList, &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{constants.ZoneLabel: z.GetName()})},
@@ -186,6 +190,7 @@ func (r *ZoneReconciler) cleanUpAuthorizationPolicies(ctx context.Context, z *v1
 
 	for _, ap := range apList.Items {
 		if predicate(ap) {
+			log.Info(fmt.Sprintf("Deleting authorizationPolicy %s in namespace %s", ap.GetName(), ap.GetNamespace()))
 			err = r.Delete(ctx, ap)
 			if err != nil {
 				msg := fmt.Sprintf("Failed to delete AuthorizationPolicy %s in namespace %s: %s", ap.GetName(), ap.GetNamespace(), err)

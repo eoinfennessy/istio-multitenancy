@@ -105,6 +105,7 @@ func (r *ZoneReconciler) createOrUpdateSidecar(ctx context.Context, z *v1alpha1.
 		}
 
 		// Sidecar doesn't exist; Create it
+		log.Info(fmt.Sprintf("Creating Sidecar %s in namespace %s", sidecarKey.Name, sidecarKey.Namespace))
 		if err := r.Create(ctx, r.constructSidecar(z, sidecarKey, getSidecarSpec)); err != nil {
 			msg := fmt.Sprintf("Error creating Sidecar %s in namespace %s: %s", sidecarKey.Name, sidecarKey.Namespace, err)
 			z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, msg)
@@ -130,6 +131,7 @@ func (r *ZoneReconciler) createOrUpdateSidecar(ctx context.Context, z *v1alpha1.
 		newSpec := getSidecarSpec()
 		if !reflect.DeepEqual(sidecar.Spec.Egress, newSpec.Egress) {
 			sidecar.Spec.Egress = newSpec.Egress
+			log.Info(fmt.Sprintf("Updating Sidecar %s in namespace %s", sidecar.Name, sidecar.Namespace), "egress", newSpec.Egress)
 			err = r.Update(ctx, sidecar)
 			if err != nil {
 				msg := fmt.Sprintf("Error updating Sidecar %s in namespace %s: %s", sidecar.Name, sidecar.Namespace, err)
@@ -143,6 +145,8 @@ func (r *ZoneReconciler) createOrUpdateSidecar(ctx context.Context, z *v1alpha1.
 
 // cleanUpSidecars deletes Sidecars that should no longer be included in the Zone
 func (r *ZoneReconciler) cleanUpSidecars(ctx context.Context, z *v1alpha1.Zone) error {
+	log := logf.FromContext(ctx)
+
 	sidecarList := &istioclientnetworkingv1.SidecarList{}
 	err := r.List(ctx, sidecarList, &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{constants.ZoneLabel: z.GetName()})},
@@ -171,6 +175,7 @@ func (r *ZoneReconciler) cleanUpSidecars(ctx context.Context, z *v1alpha1.Zone) 
 
 	for _, sidecar := range sidecarList.Items {
 		if shouldSidecarBeDeleted(sidecar, zoneNamespaces, additionalSidecarNames) {
+			log.Info(fmt.Sprintf("Deleting Sidecar %s in namespace %s", sidecar.Name, sidecar.Namespace))
 			err = r.Delete(ctx, sidecar)
 			if err != nil {
 				msg := fmt.Sprintf("Failed to delete Sidecar %s in namespace %s: %s", sidecar.GetName(), sidecar.GetNamespace(), err)

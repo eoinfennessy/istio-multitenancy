@@ -26,8 +26,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
 	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
@@ -36,7 +36,7 @@ import (
 
 func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone) error {
 	// Get list of Services that should be part of the Zone
-	svcs, err := r.listServicesForZone(ctx, z)
+	services, err := r.listServicesForZone(ctx, z)
 	if err != nil {
 		z.Status.SetStatusCondition(v1alpha1.ConditionTypeReconciled, metav1.ConditionFalse, v1alpha1.ConditionReasonReconcileError, "Failed to list Services")
 		return err
@@ -44,12 +44,12 @@ func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone
 
 	// Update each Service (if required) to include it in the Zone
 	ch := make(chan error)
-	for _, svc := range svcs {
+	for _, svc := range services {
 		go func() {
 			ch <- r.includeServiceInZone(ctx, z, svc)
 		}()
 	}
-	for range svcs {
+	for range services {
 		err = <-ch
 		if err != nil {
 			if pkgerrors.IsUnreconcilableError(err) {
@@ -73,6 +73,8 @@ func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone
 
 // cleanUpServices removes labels and annotations from Services that should no longer be part of the Zone
 func (r *ZoneReconciler) cleanUpServices(ctx context.Context, z *v1alpha1.Zone, predicate func(service corev1.Service) bool) error {
+	log := logf.FromContext(ctx)
+
 	services := corev1.ServiceList{}
 	if err := r.List(ctx, &services, &client.ListOptions{
 		LabelSelector: labels.SelectorFromSet(map[string]string{constants.ZoneLabel: z.Name}),
@@ -83,13 +85,14 @@ func (r *ZoneReconciler) cleanUpServices(ctx context.Context, z *v1alpha1.Zone, 
 
 	ch := make(chan error)
 	var updatedServiceCount int
-	for _, service := range services.Items {
-		if predicate(service) {
+	for _, svc := range services.Items {
+		if predicate(svc) {
 			updatedServiceCount++
 			go func(ch chan error) {
-				delete(service.Labels, constants.ZoneLabel)
-				delete(service.Annotations, annotation.NetworkingExportTo.Name)
-				ch <- r.Update(ctx, &service)
+				delete(svc.Labels, constants.ZoneLabel)
+				delete(svc.Annotations, annotation.NetworkingExportTo.Name)
+				log.Info(fmt.Sprintf("Excluding Service %s in namespace %s from Zone", svc.Name, svc.Namespace))
+				ch <- r.Update(ctx, &svc)
 			}(ch)
 		}
 	}
@@ -105,12 +108,12 @@ func (r *ZoneReconciler) cleanUpServices(ctx context.Context, z *v1alpha1.Zone, 
 
 // listServicesForZone returns a slice of Services that should be part of the Zone
 func (r *ZoneReconciler) listServicesForZone(ctx context.Context, z *v1alpha1.Zone) ([]corev1.Service, error) {
-	servicesLists := make([]*corev1.ServiceList, len(z.Spec.Namespaces))
+	serviceLists := make([]*corev1.ServiceList, len(z.Spec.Namespaces))
 	ch := make(chan error)
 	for i, ns := range z.Spec.Namespaces {
-		servicesLists[i] = &corev1.ServiceList{}
+		serviceLists[i] = &corev1.ServiceList{}
 		go func(ch chan error) {
-			ch <- r.List(ctx, servicesLists[i], &client.ListOptions{Namespace: ns})
+			ch <- r.List(ctx, serviceLists[i], &client.ListOptions{Namespace: ns})
 		}(ch)
 	}
 	for range z.Spec.Namespaces {
@@ -121,11 +124,11 @@ func (r *ZoneReconciler) listServicesForZone(ctx context.Context, z *v1alpha1.Zo
 	}
 
 	var serviceCount int
-	for _, servicesList := range servicesLists {
+	for _, servicesList := range serviceLists {
 		serviceCount += len(servicesList.Items)
 	}
 	services := make([]corev1.Service, 0, serviceCount)
-	for _, serviceList := range servicesLists {
+	for _, serviceList := range serviceLists {
 		services = append(services, serviceList.Items...)
 	}
 	return services, nil
@@ -134,17 +137,15 @@ func (r *ZoneReconciler) listServicesForZone(ctx context.Context, z *v1alpha1.Zo
 // includeServiceInZone sets the labels and annotations of the Service to include it in the Zone, and
 // updates the Service if either has changed.
 func (r *ZoneReconciler) includeServiceInZone(ctx context.Context, z *v1alpha1.Zone, svc corev1.Service) error {
-	log := ctrl.LoggerFrom(ctx)
+	log := logf.FromContext(ctx)
 
 	var metaChanged bool
-	if labelVal, exists := svc.GetLabels()[constants.ZoneLabel]; exists {
-		// Service is currently part of another Zone; Return UnreconcilableError
-		if labelVal != z.Name {
-			return pkgerrors.NewUnreconcilableError(fmt.Sprintf("Service %s in namespace %s is currently part of zone %s", svc.Name, svc.Namespace, labelVal))
-		}
-	} else {
+	if labelVal, exists := svc.GetLabels()[constants.ZoneLabel]; !exists {
 		svc.SetLabels(map[string]string{constants.ZoneLabel: z.Name})
 		metaChanged = true
+	} else if labelVal != z.Name {
+		// Service is currently part of another Zone; Return UnreconcilableError
+		return pkgerrors.NewUnreconcilableError(fmt.Sprintf("Service %s in namespace %s is currently part of zone %s", svc.Name, svc.Namespace, labelVal))
 	}
 
 	exportToAnnotationValue := strings.Join(getNamespacesForServiceExport(z, svc.GetName(), svc.GetNamespace()), ",")
@@ -154,7 +155,7 @@ func (r *ZoneReconciler) includeServiceInZone(ctx context.Context, z *v1alpha1.Z
 	}
 
 	if metaChanged {
-		log.V(1).Info("Updating Service", "namespace", svc.Namespace, "name", svc.Name)
+		log.Info(fmt.Sprintf("Updating Service %s in namespace %s", svc.Name, svc.Namespace), "exportToAnnotationValue", exportToAnnotationValue)
 		return r.Update(ctx, &svc)
 	}
 	return nil
