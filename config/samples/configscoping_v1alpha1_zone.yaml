@@ -18,5 +18,5 @@ spec:
     - workloadSelector:
         app: sleep
       hosts:
-        - unzoned/httpbin
+        - unzoned/httpbin.red-a.svc.cluster.local
         - common/*
