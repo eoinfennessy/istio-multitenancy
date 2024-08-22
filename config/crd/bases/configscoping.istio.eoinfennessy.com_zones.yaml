@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
-  name: zones.multitenancy.istio.eoinfennessy.com
+  name: zones.configscoping.istio.eoinfennessy.com
 spec:
-  group: multitenancy.istio.eoinfennessy.com
+  group: configscoping.istio.eoinfennessy.com
   names:
     kind: Zone
     listKind: ZoneList

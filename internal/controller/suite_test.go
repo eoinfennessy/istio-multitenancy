@@ -36,7 +36,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	multitenancyv1alpha1 "github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
+	configscopingv1alpha1 "github.com/eoinfennessy/istio-zones/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -82,7 +82,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	Expect(multitenancyv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(configscopingv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(istioclientnetworkingv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(istioclientsecurityv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	// +kubebuilder:scaffold:scheme

@@ -36,8 +36,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
-	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
+	"github.com/eoinfennessy/istio-zones/api/v1alpha1"
+	"github.com/eoinfennessy/istio-zones/pkg/constants"
 )
 
 var _ = Describe("Zone Controller", Ordered, func() {

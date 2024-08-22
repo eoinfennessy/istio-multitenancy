@@ -39,9 +39,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
-	"github.com/eoinfennessy/istio-multitenancy/pkg/constants"
-	pkgerrors "github.com/eoinfennessy/istio-multitenancy/pkg/errors"
+	"github.com/eoinfennessy/istio-zones/api/v1alpha1"
+	"github.com/eoinfennessy/istio-zones/pkg/constants"
+	pkgerrors "github.com/eoinfennessy/istio-zones/pkg/errors"
 )
 
 const (
@@ -54,9 +54,9 @@ type ZoneReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=multitenancy.istio.eoinfennessy.com,resources=zones/finalizers,verbs=update
+// +kubebuilder:rbac:groups=configscoping.istio.eoinfennessy.com,resources=zones,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=configscoping.istio.eoinfennessy.com,resources=zones/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=configscoping.istio.eoinfennessy.com,resources=zones/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="networking.istio.io",resources=sidecars,verbs="*"
