@@ -20,10 +20,10 @@ helm install istio-base istio/base --version 1.22.3 -n istio-system --set defaul
 helm install istiod istio/istiod --version 1.22.3 -n istio-system --set meshConfig.accessLogFile=/dev/stdout --wait
 ```
 
-### Install istio-multitenancy
+### Install istio-zones
 
 ```sh {"id":"01J4V7V6DMF11QY21PMYE7Z5RJ","interactive":"true"}
-kubectl apply -k "https://github.com/eoinfennessy/istio-multitenancy//config/default/?version=v0.1.0"
+kubectl apply -k "https://github.com/eoinfennessy/istio-zones//config/default/?version=v0.1.0"
 ```
 
 ### Create example Namespaces and Services
@@ -69,13 +69,13 @@ export ISTIO_INGRESSGATEWAY=$(kubectl get pod -l istio=ingressgateway -n istio-i
 
 ## Creating Zones
 
-![](./images/istio-multitenancy-1.png)
+![](./images/istio-zones-1.png)
 
 Below, we create two Zones, `blue` and `red`, specifying the namespaces to be included in each.
 
 ```sh {"id":"01J4V7V6DMF11QY21PN6MXRARB","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: blue
@@ -88,7 +88,7 @@ EOF
 
 ```sh {"id":"01J4V7V6DMF11QY21PNAKHXAQE","interactive":"false","terminalRows":""}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: red
@@ -143,11 +143,11 @@ Services in a Zone can be exported to namespaces outside the Zone by adding item
 
 Below, we add an item in `spec.serviceExports` to export httpbin in the blue-a namespace to the istio-ingress namespace:
 
-![](./images/istio-multitenancy-2.png)
+![](./images/istio-zones-2.png)
 
 ```sh {"id":"01J4V7V6DMF11QY21PNJ1B60BH","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: blue
@@ -177,11 +177,11 @@ kubectl get authorizationpolicy zone-export-httpbin -n blue-a -o yaml
 
 By specifying a wildcard, we can also export Services in Zone namespaces to the entire mesh (if the egress scope of the proxy is not limited to exclude the exported service):
 
-![](./images/istio-multitenancy-3.png)
+![](./images/istio-zones-3.png)
 
 ```sh {"id":"01J4V7V6DN4GRGZSVYSSEPDB1G","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: red
@@ -212,7 +212,7 @@ We can also export a service from one Zone to another Zone, but this requires th
 
 ```sh {"id":"01J4V7V6DN4GRGZSVYSYWYV5VW","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: blue
@@ -246,11 +246,11 @@ In the previous step, we exported httpbin in the blue-b namespace to the red-a n
 
 We can extend the egress scope of selected workloads in a Zone by adding items to the Zone's `spec.additionalEgress`:
 
-![](./images/istio-multitenancy-4.png)
+![](./images/istio-zones-4.png)
 
 ```sh {"id":"01J4V7V6DN4GRGZSVYT40CDG8D","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: red
@@ -292,11 +292,11 @@ kubectl exec $SLEEP_RED_A -n red-a -c sleep -- curl httpbin.blue-b:8000/headers
 
 We can also add an `additionalEgress` item to extend the egress scope of a workload to include the entire mesh (excluding services that have not been exported from other Zones):
 
-![](./images/istio-multitenancy-5.png)
+![](./images/istio-zones-5.png)
 
 ```sh {"id":"01J4VGCTNQGM2AFA5HFZRN2D6Z","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: blue
@@ -339,7 +339,7 @@ AuthorizationPolicy management can be disabled by setting the Zone's `spec.manag
 
 ```sh {"id":"01J4VMNC9P3WT7W5NT3Q0D5BBJ","interactive":"false"}
 kubectl apply -f - <<EOF
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   name: blue

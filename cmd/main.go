@@ -37,8 +37,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	multitenancyv1alpha1 "github.com/eoinfennessy/istio-multitenancy/api/v1alpha1"
-	"github.com/eoinfennessy/istio-multitenancy/internal/controller"
+	configscopingv1alpha1 "github.com/eoinfennessy/istio-zones/api/v1alpha1"
+	"github.com/eoinfennessy/istio-zones/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,7 +50,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(multitenancyv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(configscopingv1alpha1.AddToScheme(scheme))
 
 	utilruntime.Must(istioclientnetworkingv1.AddToScheme(scheme))
 

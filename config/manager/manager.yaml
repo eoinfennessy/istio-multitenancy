@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: istio-multitenancy
+    app.kubernetes.io/name: istio-zones
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
@@ -14,7 +14,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: istio-multitenancy
+    app.kubernetes.io/name: istio-zones
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
@@ -63,7 +63,7 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-        image: quay.io/efenness/istio-multitenancy:latest
+        image: quay.io/efenness/istio-zones:latest
         name: manager
         securityContext:
           allowPrivilegeEscalation: false

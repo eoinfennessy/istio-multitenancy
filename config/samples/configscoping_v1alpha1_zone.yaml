@@ -1,8 +1,8 @@
-apiVersion: multitenancy.istio.eoinfennessy.com/v1alpha1
+apiVersion: configscoping.istio.eoinfennessy.com/v1alpha1
 kind: Zone
 metadata:
   labels:
-    app.kubernetes.io/name: istio-multitenancy
+    app.kubernetes.io/name: istio-zones
     app.kubernetes.io/managed-by: kustomize
   name: zone-sample
 spec:

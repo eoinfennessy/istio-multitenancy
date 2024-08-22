@@ -17,8 +17,8 @@ limitations under the License.
 package constants
 
 const (
-	// MetadataNamespace is the namespace for multitenancy metadata (labels, annotations)
-	MetadataNamespace = "multitenancy.istio.eoinfennessy.com"
+	// MetadataNamespace is the namespace for configscoping metadata (labels, annotations)
+	MetadataNamespace = "configscoping.istio.eoinfennessy.com"
 
 	// SingeltonResourceName is the name given to resources where only one resource should exist on the cluster or in a namespace
 	SingeltonResourceName = "default"

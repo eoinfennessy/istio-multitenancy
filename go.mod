@@ -1,4 +1,4 @@
-module github.com/eoinfennessy/istio-multitenancy
+module github.com/eoinfennessy/istio-zones
 
 go 1.22.0
 
