@@ -1,4 +1,4 @@
-module github.com/eoinfennessy/istio-zones
+module github.com/openshift-service-mesh/istio-zones
 
 go 1.22.0
 

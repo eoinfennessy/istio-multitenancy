@@ -23,7 +23,7 @@ helm install istiod istio/istiod --version 1.22.3 -n istio-system --set meshConf
 ### Install istio-zones
 
 ```sh {"id":"01J4V7V6DMF11QY21PMYE7Z5RJ","interactive":"true"}
-kubectl apply -k "https://github.com/eoinfennessy/istio-zones//config/default/?version=v0.2.0"
+kubectl apply -k "https://github.com/openshift-service-mesh/istio-zones//config/default/?version=v0.2.0"
 ```
 
 ### Create example Namespaces and Services

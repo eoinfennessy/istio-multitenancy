@@ -37,8 +37,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	configscopingv1alpha1 "github.com/eoinfennessy/istio-zones/api/v1alpha1"
-	"github.com/eoinfennessy/istio-zones/internal/controller"
+	configscopingv1alpha1 "github.com/openshift-service-mesh/istio-zones/api/v1alpha1"
+	"github.com/openshift-service-mesh/istio-zones/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
