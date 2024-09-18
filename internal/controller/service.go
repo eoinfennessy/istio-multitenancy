@@ -29,9 +29,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/eoinfennessy/istio-zones/api/v1alpha1"
-	"github.com/eoinfennessy/istio-zones/pkg/constants"
-	pkgerrors "github.com/eoinfennessy/istio-zones/pkg/errors"
+	"github.com/openshift-service-mesh/istio-zones/api/v1alpha1"
+	"github.com/openshift-service-mesh/istio-zones/pkg/constants"
+	pkgerrors "github.com/openshift-service-mesh/istio-zones/pkg/errors"
 )
 
 func (r *ZoneReconciler) reconcileServices(ctx context.Context, z *v1alpha1.Zone) error {

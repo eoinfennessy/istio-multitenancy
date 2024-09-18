@@ -36,7 +36,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	configscopingv1alpha1 "github.com/eoinfennessy/istio-zones/api/v1alpha1"
+	configscopingv1alpha1 "github.com/openshift-service-mesh/istio-zones/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

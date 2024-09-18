@@ -50,7 +50,7 @@ the infrastructure team can manage this using the same Zone resource that define
 After installing Istio, run the following to install the latest Zone CRD and controller.
 
 ```shell
-kubectl apply -k "https://github.com/eoinfennessy/istio-zones//config/default/?version=main"
+kubectl apply -k "https://github.com/openshift-service-mesh/istio-zones//config/default/?version=main"
 ```
 
 The `version` can be changed to any branch or tag (e.g. `v0.2.0`).
@@ -71,7 +71,7 @@ spec:
     - blue-b
 ```
 
-It's recommended to [read the example usage doc](https://github.com/eoinfennessy/istio-zones/blob/main/docs/example.md) to learn about additional capabilities of the Zone API,
+It's recommended to [read the example usage doc](https://github.com/openshift-service-mesh/istio-zones/blob/main/docs/example.md) to learn about additional capabilities of the Zone API,
 including how to export Services in a Zone to namespaces outside the Zone,
 how to increase the egress scope of workloads in the Zone,
 and how AuthorizationPolicy management works with the Zone API. 
